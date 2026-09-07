@@ -1,4 +1,5 @@
--- Tabsy schema
+-- Tabsy — Week 1 schema
+-- Run this in the Supabase SQL editor on a fresh project.
 
 -- profiles: one row per authenticated user, extends auth.users
 create table profiles (

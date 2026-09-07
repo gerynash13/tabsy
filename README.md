@@ -1,46 +1,55 @@
-# tabsy — Week 1
+# tabsy
 
-Auth, clients, and invoices CRUD, wired to Supabase. No reminders yet — that's Week 2.
+## Week 1 — done
+Auth, clients CRUD, invoices CRUD.
 
-## Setup
+## Week 2 — the reminder engine
 
-1. **Create a Supabase project** at supabase.com (free tier is fine).
+### New setup steps
 
-2. **Run the schema.** Open the SQL editor in your Supabase project and paste in the contents of `supabase/schema.sql`, then run it. This creates `profiles`, `clients`, `invoices`, `reminder_log`, sets up row-level security so each user only ever sees their own data, and adds a trigger that creates a `profiles` row automatically whenever someone signs up.
+1. **Get your Supabase service role key.** Project Settings → API → "service_role" key (different from the "anon public" one you already have). This is secret — never put it in a browser-facing file.
 
-3. **Configure auth redirect URLs.** In Supabase, go to Authentication → URL Configuration and add:
-   - Site URL: `http://localhost:3000`
-   - Redirect URLs: `http://localhost:3000/auth/callback`
+2. **Create a Resend account** at resend.com (free tier: 3,000 emails/month). Grab an API key from the dashboard.
 
-   (Add your production URL here too once you deploy.)
-
-4. **Copy environment variables.**
+3. **Add the new variables to your existing `.env.local`** (don't overwrite the file, just add these lines — see `.env.local.example` for the full list):
    ```
-   cp .env.local.example .env.local
+   SUPABASE_SERVICE_ROLE_KEY=...
+   RESEND_API_KEY=...
+   REMINDER_FROM_EMAIL=Tabsy <onboarding@resend.dev>
+   CRON_SECRET=any-random-string-you-make-up
    ```
-   Fill in `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` from Supabase → Project Settings → API.
+   `onboarding@resend.dev` is Resend's shared sandbox sender — it works immediately with no setup, but in sandbox mode Resend will generally only deliver to *your own* verified account email. That's fine for testing this week. Once you have a domain, verify it in Resend (Domains → Add Domain, then add the DNS records it shows you) and switch `REMINDER_FROM_EMAIL` to something like `Tabsy <reminders@yourdomain.com>` — do this well before sending to real clients, since a freshly verified domain needs a little time to build sending reputation.
 
-5. **Install and run.**
+4. **Install the new dependencies:**
    ```
    npm install
-   npm run dev
    ```
-   Visit `http://localhost:3000`. Sign in with your email — Supabase sends a magic link (check your inbox, including spam, the first time).
 
-## What's here
+5. **For a fast test loop, set your first client's email to your own address** (edit the client in the app) — otherwise Resend's sandbox mode won't actually deliver anywhere you can see.
 
-- Magic-link auth (no passwords to manage)
-- Clients: create, list, edit, delete
-- Invoices: create, list, edit, delete, mark as paid
-- Brand colors and IBM Plex Sans / IBM Plex Sans JP wired into Tailwind, matching the Tabsy brand kit
+6. **Seed some test invoices:**
+   ```
+   npm run seed
+   ```
+   This creates five invoices for your first client, with due dates set so today matches each default reminder offset (−3, 0, +3, +7, +14 days).
 
-## Known things to watch for
+7. **Trigger the cron job manually** (in dev, the auth check is skipped): open `http://localhost:3000/api/cron/reminders` in your browser, or `curl http://localhost:3000/api/cron/reminders`. You should get back a JSON summary and, if you set your own email as the client's contact, five emails.
 
-- **`IBM_Plex_Sans_JP` import** in `src/app/layout.tsx` — this should resolve from `next/font/google`, but if your installed Next.js version's font catalogue doesn't have it under that exact name, swap it for `Noto_Sans_JP` (same idea, slightly different letterforms). This is the one spot I couldn't verify by actually running a build in this environment.
-- **"Overdue" is computed, not stored, for now.** The invoice list works out whether something's overdue on the fly from `due_date` + `status`. Week 3 adds the cron job that actually promotes the stored status — until then, editing an invoice only lets you set `unpaid`/`paid`.
-- **`reminder_log` exists but is unused.** It's there so Week 2's cron job has somewhere to write to on day one, per the project brief.
-- **First sign-in:** Supabase's default email sending works out of the box in development — no need to wire up Resend yet, that's for the automated reminder emails in Week 2, not for login.
+8. **Run it again immediately.** This is the important check: the second run should report `"sent": false` for all five — nothing should be emailed twice. That's the idempotency behavior the whole design depends on.
 
-## Next: Week 2
+### What's actually running
 
-Daily cron endpoint that reads `reminder_offsets` off each invoice, checks `reminder_log` to avoid duplicate sends, and sends via Resend.
+- `src/app/api/cron/reminders/route.ts` — the daily job. For every unpaid invoice, checks each of that user's reminder offsets against today's date (computed in JST, not the server's own timezone), and sends whichever ones match.
+- `src/lib/reminders/templates.ts` — the email copy itself, in Japanese and English, escalating in tone as an invoice gets more overdue. **This is placeholder copy** — worth having someone fluent in business Japanese review the ja templates before this goes near a real client. Week 3 replaces this with an AI-drafted, per-user editable version, but the mechanism (claim → send → log) doesn't change.
+- `src/lib/supabase/admin.ts` — a service-role Supabase client, used only server-side, only by the cron job and the seed script. It bypasses your row-level security entirely, which is exactly what a background job needs (it has to see every user's data, not just one signed-in person's) and exactly why the key must never reach the browser.
+- `vercel.json` — schedules the cron route to run once a day at `0 0 * * *` UTC, which is 9:00am JST.
+
+### Known limitations, on purpose
+
+- If Resend's send call fails after the slot's already been claimed in `reminder_log`, that reminder silently never retries. Fine to notice-and-manually-fix at your current scale; worth a real retry/dead-letter approach before this is handling other people's client relationships unsupervised.
+- No dashboard yet, no bank details in the emails yet, no stored "overdue" status — those are Week 3.
+- Deploying this to Vercel with cron actually running requires setting all of the env vars above in the Vercel project settings too, plus `CRON_SECRET` specifically (Vercel automatically attaches it as a Bearer token when it invokes the route).
+
+## Next: Week 3
+
+Dashboard (outstanding total, due-soon, overdue lists), bank transfer details in settings wired into the emails, stored overdue status computed by the cron job itself, and the AI-assisted template editor.
