@@ -22,11 +22,17 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         <div className="flex items-center gap-8">
           <span className="text-lg font-medium tracking-tight text-ledger">tabsy</span>
           <nav className="flex gap-5 text-sm">
+            <Link href="/dashboard" className="hover:text-ledger">
+              Dashboard
+            </Link>
             <Link href="/invoices" className="hover:text-ledger">
               Invoices
             </Link>
             <Link href="/clients" className="hover:text-ledger">
               Clients
+            </Link>
+            <Link href="/settings" className="hover:text-ledger">
+              Settings
             </Link>
           </nav>
         </div>

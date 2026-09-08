@@ -22,7 +22,7 @@ create table clients (
 );
 
 -- invoices
-create type invoice_status as enum ('unpaid', 'paid');
+create type invoice_status as enum ('unpaid', 'paid', 'overdue');
 
 create table invoices (
   id uuid primary key default gen_random_uuid(),
@@ -48,11 +48,26 @@ create table reminder_log (
   unique (invoice_id, offset_days)
 );
 
+-- Per-user, per-language, per-stage custom email templates. If a row
+-- doesn't exist for a given (user, language, offset), the cron job falls
+-- back to the built-in default in src/lib/reminders/templates.ts.
+create table email_templates (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references profiles(id) on delete cascade,
+  language text not null check (language in ('ja', 'en')),
+  stage_offset int not null,
+  subject text not null,
+  body text not null,
+  updated_at timestamptz not null default now(),
+  unique (user_id, language, stage_offset)
+);
+
 -- Row Level Security: every table is scoped to the owning user.
 alter table profiles enable row level security;
 alter table clients enable row level security;
 alter table invoices enable row level security;
 alter table reminder_log enable row level security;
+alter table email_templates enable row level security;
 
 create policy "read own profile" on profiles for select using (auth.uid() = id);
 create policy "update own profile" on profiles for update using (auth.uid() = id);
@@ -70,6 +85,9 @@ create policy "manage own reminder logs" on reminder_log for all
     where invoices.id = reminder_log.invoice_id
     and invoices.user_id = auth.uid()
   ));
+
+create policy "manage own email templates" on email_templates for all
+  using (auth.uid() = user_id) with check (auth.uid() = user_id);
 
 -- Auto-create a profile row whenever someone signs up via Supabase Auth.
 create or replace function public.handle_new_user()

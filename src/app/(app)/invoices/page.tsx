@@ -7,26 +7,23 @@ type InvoiceRow = {
   amount: number
   currency: string
   due_date: string
-  status: 'unpaid' | 'paid'
+  status: 'unpaid' | 'overdue' | 'paid'
   clients: { name: string } | null
 }
 
-// "Overdue" isn't a stored status yet — it's computed here for display.
-// Week 3 adds the cron job that promotes unpaid+past-due invoices to a
-// real stored status so reminders can key off it too.
-function isOverdue(dueDate: string, status: string) {
-  return status === 'unpaid' && new Date(dueDate) < new Date(new Date().toDateString())
-}
-
-function StatusBadge({ status, dueDate }: { status: string; dueDate: string }) {
-  const label = status === 'paid' ? 'paid' : isOverdue(dueDate, status) ? 'overdue' : 'unpaid'
+// Status is now genuinely stored and kept current by the daily cron job
+// (see Week 3's update to the cron route) — no more computing "overdue"
+// on the fly here. One small caveat worth knowing: since the cron only
+// runs once a day, a due date that just passed today may still show as
+// "unpaid" until the next run.
+function StatusBadge({ status }: { status: InvoiceRow['status'] }) {
   const styles =
-    label === 'paid'
+    status === 'paid'
       ? 'bg-tabAccent/10 text-tabAccent'
-      : label === 'overdue'
+      : status === 'overdue'
         ? 'bg-overdue/10 text-overdue'
         : 'bg-ink/5 text-ink/60'
-  return <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${styles}`}>{label}</span>
+  return <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${styles}`}>{status}</span>
 }
 
 export default async function InvoicesPage() {
@@ -73,7 +70,7 @@ export default async function InvoicesPage() {
                 </td>
                 <td className="py-2 text-ink/70">{inv.due_date}</td>
                 <td className="py-2">
-                  <StatusBadge status={inv.status} dueDate={inv.due_date} />
+                  <StatusBadge status={inv.status} />
                 </td>
               </tr>
             ))}

@@ -3,53 +3,40 @@
 ## Week 1 — done
 Auth, clients CRUD, invoices CRUD.
 
-## Week 2 — the reminder engine
+## Week 2 — done
+Daily reminder cron job, Resend integration, default JA/EN templates, idempotent send logging.
+
+## Week 3 — dashboard, bank details, real overdue status, AI templates
 
 ### New setup steps
 
-1. **Get your Supabase service role key.** Project Settings → API → "service_role" key (different from the "anon public" one you already have). This is secret — never put it in a browser-facing file.
+1. **Run the migration.** Open `supabase/migrations/002_week3.sql` in the Supabase SQL editor. **Run Part 1 by itself first** (`alter type invoice_status add value 'overdue';`), wait for it to finish, then run Part 2 (creates `email_templates`). Postgres won't let a brand-new enum value be used in the same statement batch it was just added in, so this has to be two separate runs, in order.
 
-2. **Create a Resend account** at resend.com (free tier: 3,000 emails/month). Grab an API key from the dashboard.
-
-3. **Add the new variables to your existing `.env.local`** (don't overwrite the file, just add these lines — see `.env.local.example` for the full list):
+2. **Get a Groq API key** at console.groq.com — sign up with email or Google, no credit card needed, ever, on the free tier. Grab a key from console.groq.com/keys and add it to `.env.local`:
    ```
-   SUPABASE_SERVICE_ROLE_KEY=...
-   RESEND_API_KEY=...
-   REMINDER_FROM_EMAIL=Tabsy <onboarding@resend.dev>
-   CRON_SECRET=any-random-string-you-make-up
+   GROQ_API_KEY=...
    ```
-   `onboarding@resend.dev` is Resend's shared sandbox sender — it works immediately with no setup, but in sandbox mode Resend will generally only deliver to *your own* verified account email. That's fine for testing this week. Once you have a domain, verify it in Resend (Domains → Add Domain, then add the DNS records it shows you) and switch `REMINDER_FROM_EMAIL` to something like `Tabsy <reminders@yourdomain.com>` — do this well before sending to real clients, since a freshly verified domain needs a little time to build sending reputation.
+   The free tier is rate-limited (roughly 30 requests/minute), but this is only ever called when you click "Draft with AI" — a handful of times total, not per reminder sent — so you won't come close to that limit in normal use.
 
-4. **Install the new dependencies:**
+   Prefer OpenRouter instead? `src/lib/reminders/draft-templates.ts` has a comment showing exactly what to change (`baseURL`, `apiKey`, `MODEL`) — it's a two-line swap since both providers expose an OpenAI-compatible API.
+
+3. **Install the new dependency:**
    ```
    npm install
    ```
 
-5. **For a fast test loop, set your first client's email to your own address** (edit the client in the app) — otherwise Resend's sandbox mode won't actually deliver anywhere you can see.
+4. **Fill in your bank details.** Go to Settings in the app and add your business name and bank transfer (振込) details. These now get appended to every reminder email automatically.
 
-6. **Seed some test invoices:**
-   ```
-   npm run seed
-   ```
-   This creates five invoices for your first client, with due dates set so today matches each default reminder offset (−3, 0, +3, +7, +14 days).
+5. **Draft your email templates.** Go to Settings → Manage email templates, pick a language, and click "Draft all 5 with AI." Review and edit what comes back — this is placeholder-quality copy from a model, not something to trust blindly, especially the Japanese phrasing if you're not fluent enough to check it yourself. Leaving a stage blank falls back to the built-in default.
 
-7. **Trigger the cron job manually** (in dev, the auth check is skipped): open `http://localhost:3000/api/cron/reminders` in your browser, or `curl http://localhost:3000/api/cron/reminders`. You should get back a JSON summary and, if you set your own email as the client's contact, five emails.
+6. **Re-run the Week 2 test loop** (`npm run seed`, hit `/api/cron/reminders`, run it again to confirm no duplicates) to see your bank details and any custom templates actually show up in a real send.
 
-8. **Run it again immediately.** This is the important check: the second run should report `"sent": false` for all five — nothing should be emailed twice. That's the idempotency behavior the whole design depends on.
+### What changed under the hood
 
-### What's actually running
+- **`invoices.status` can now be `overdue` for real.** The cron job promotes any unpaid invoice past its due date before it does anything else, every day. The invoice list and dashboard just read this stored value now — no more computing it on the fly.
+- **The cron job checks `email_templates` before falling back to the hardcoded defaults**, per user, per language, per stage. If you haven't drafted anything yet, everything behaves exactly as it did in Week 2.
+- **AI only ever touches the surrounding language, once, at draft time** — never the amount, date, invoice number, or bank details, which are always inserted as plain variables (`{{client_name}}`, `{{amount}}`, etc.) after the fact. That rule doesn't change even though templates are now editable.
+- **The dashboard's outstanding total is a naive sum** — it assumes one currency. Multi-currency support is still explicitly out of scope for the MVP.
 
-- `src/app/api/cron/reminders/route.ts` — the daily job. For every unpaid invoice, checks each of that user's reminder offsets against today's date (computed in JST, not the server's own timezone), and sends whichever ones match.
-- `src/lib/reminders/templates.ts` — the email copy itself, in Japanese and English, escalating in tone as an invoice gets more overdue. **This is placeholder copy** — worth having someone fluent in business Japanese review the ja templates before this goes near a real client. Week 3 replaces this with an AI-drafted, per-user editable version, but the mechanism (claim → send → log) doesn't change.
-- `src/lib/supabase/admin.ts` — a service-role Supabase client, used only server-side, only by the cron job and the seed script. It bypasses your row-level security entirely, which is exactly what a background job needs (it has to see every user's data, not just one signed-in person's) and exactly why the key must never reach the browser.
-- `vercel.json` — schedules the cron route to run once a day at `0 0 * * *` UTC, which is 9:00am JST.
-
-### Known limitations, on purpose
-
-- If Resend's send call fails after the slot's already been claimed in `reminder_log`, that reminder silently never retries. Fine to notice-and-manually-fix at your current scale; worth a real retry/dead-letter approach before this is handling other people's client relationships unsupervised.
-- No dashboard yet, no bank details in the emails yet, no stored "overdue" status — those are Week 3.
-- Deploying this to Vercel with cron actually running requires setting all of the env vars above in the Vercel project settings too, plus `CRON_SECRET` specifically (Vercel automatically attaches it as a Bearer token when it invokes the route).
-
-## Next: Week 3
-
-Dashboard (outstanding total, due-soon, overdue lists), bank transfer details in settings wired into the emails, stored overdue status computed by the cron job itself, and the AI-assisted template editor.
+## Still not done
+Stripe/payment links, CSV import, multi-currency, team accounts, invoice PDF generation.

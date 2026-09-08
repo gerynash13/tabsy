@@ -1,19 +1,19 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { todayInJST, addDays } from '@/lib/reminders/dates'
-import { getTemplate } from '@/lib/reminders/templates'
+import { getTemplate, formatAmount, bankSection } from '@/lib/reminders/templates'
+import { interpolate } from '@/lib/reminders/render'
 import { Resend } from 'resend'
 import { NextResponse } from 'next/server'
 
 const resend = new Resend(process.env.RESEND_API_KEY)
 const FROM = process.env.REMINDER_FROM_EMAIL || 'Tabsy <onboarding@resend.dev>'
 
-// Runs once a day (see vercel.json). For each unpaid invoice, checks every
-// offset in that user's reminder_offsets against today's date in JST, and
-// sends whichever ones match — skipping anything already logged.
+// Runs once a day (see vercel.json). First promotes anything past due to
+// 'overdue' so the dashboard reflects it immediately, then checks every
+// offset in each user's reminder_offsets against today's date in JST and
+// sends whichever ones match — skipping anything already logged, and
+// preferring a user's own saved template over the built-in default.
 export async function GET(request: Request) {
-  // In production, only Vercel's own scheduler (or someone with the
-  // secret) can trigger this. Skipped in dev so you can hit this route
-  // directly in the browser while testing.
   if (process.env.NODE_ENV === 'production') {
     const auth = request.headers.get('authorization')
     if (auth !== `Bearer ${process.env.CRON_SECRET}`) {
@@ -24,12 +24,14 @@ export async function GET(request: Request) {
   const supabase = createAdminClient()
   const today = todayInJST()
 
+  await supabase.from('invoices').update({ status: 'overdue' }).eq('status', 'unpaid').lt('due_date', today)
+
   const { data: invoices, error } = await supabase
     .from('invoices')
     .select(
-      'id, invoice_number, amount, currency, due_date, status, clients(name, contact_email, preferred_language), profiles(business_name, bank_details, reminder_offsets)'
+      'id, invoice_number, amount, currency, due_date, status, clients(name, contact_email, preferred_language), profiles(id, business_name, bank_details, reminder_offsets)'
     )
-    .eq('status', 'unpaid')
+    .neq('status', 'paid')
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 })
@@ -55,33 +57,53 @@ export async function GET(request: Request) {
         .insert({ invoice_id: inv.id, offset_days: offset })
 
       if (claimError) {
-        // Someone already claimed it — already sent, nothing to do.
         results.push({ invoiceId: inv.id, offset, sent: false })
         continue
       }
 
       const lang: 'ja' | 'en' = client.preferred_language === 'en' ? 'en' : 'ja'
-      const template = getTemplate(offset, lang, {
-        clientName: client.name,
-        invoiceNumber: inv.invoice_number,
-        amount: inv.amount,
-        currency: inv.currency,
-        dueDate: inv.due_date,
-        businessName: profile.business_name || 'Tabsy',
-        bankDetails: profile.bank_details,
-      })
 
-      // Known limitation for now: if this send fails, the slot above is
-      // still claimed, so it won't retry on the next run. Fine at MVP
-      // scale where you can just check your own dashboard — worth a
-      // proper retry/dead-letter approach before this handles real
-      // customers' money-critical email at any volume.
+      const { data: custom } = await supabase
+        .from('email_templates')
+        .select('subject, body')
+        .eq('user_id', profile.id)
+        .eq('language', lang)
+        .eq('stage_offset', offset)
+        .maybeSingle()
+
+      let subject: string
+      let body: string
+
+      if (custom) {
+        const vars = {
+          client_name: client.name,
+          invoice_number: inv.invoice_number,
+          amount: formatAmount(inv.amount, inv.currency),
+          due_date: inv.due_date,
+          business_name: profile.business_name || 'Tabsy',
+        }
+        subject = interpolate(custom.subject, vars)
+        body = interpolate(custom.body, vars) + bankSection(profile.bank_details, lang)
+      } else {
+        const template = getTemplate(offset, lang, {
+          clientName: client.name,
+          invoiceNumber: inv.invoice_number,
+          amount: inv.amount,
+          currency: inv.currency,
+          dueDate: inv.due_date,
+          businessName: profile.business_name || 'Tabsy',
+          bankDetails: profile.bank_details,
+        })
+        subject = template.subject
+        body = template.body
+      }
+
       try {
         const { error: sendError } = await resend.emails.send({
           from: FROM,
           to: [client.contact_email],
-          subject: template.subject,
-          text: template.body,
+          subject,
+          text: body,
         })
 
         if (sendError) {
