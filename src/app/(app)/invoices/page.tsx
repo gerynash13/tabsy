@@ -36,16 +36,22 @@ export default async function InvoicesPage() {
 
   return (
     <div>
-      <div className="mb-6 flex items-center justify-between">
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-2">
         <h1 className="text-xl font-medium">Invoices</h1>
-        <Link href="/invoices/new" className="rounded-md bg-ledger px-3 py-1.5 text-sm text-paper">
-          New invoice
-        </Link>
+        <div className="flex gap-2">
+          <Link href="/invoices/import" className="rounded-md border border-ink/15 px-3 py-1.5 text-sm text-ink/70">
+            Import CSV
+          </Link>
+          <Link href="/invoices/new" className="rounded-md bg-ledger px-3 py-1.5 text-sm text-paper">
+            New invoice
+          </Link>
+        </div>
       </div>
 
       {!invoices?.length ? (
         <p className="text-sm text-ink/50">No invoices yet.</p>
       ) : (
+        <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-ink/10 text-left text-ink/50">
@@ -76,6 +82,7 @@ export default async function InvoicesPage() {
             ))}
           </tbody>
         </table>
+        </div>
       )}
     </div>
   )

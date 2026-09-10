@@ -32,7 +32,7 @@ export default async function DashboardPage() {
     <div>
       <h1 className="mb-6 text-xl font-medium">Dashboard</h1>
 
-      <div className="mb-8 grid grid-cols-3 gap-4">
+      <div className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-3">
         <div className="rounded-md border border-ink/10 p-4">
           <p className="text-xs text-ink/50">Outstanding</p>
           {/* Naive sum — assumes a single currency for now, per the
@@ -64,6 +64,7 @@ function InvoiceSection({ title, rows }: { title: string; rows: Row[] }) {
       {!rows.length ? (
         <p className="text-sm text-ink/40">Nothing here.</p>
       ) : (
+        <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <tbody>
             {rows.map((inv) => (
@@ -82,6 +83,7 @@ function InvoiceSection({ title, rows }: { title: string; rows: Row[] }) {
             ))}
           </tbody>
         </table>
+        </div>
       )}
     </div>
   )

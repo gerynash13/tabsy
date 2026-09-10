@@ -12,14 +12,17 @@
   "dependencies": {
     "@supabase/ssr": "^0.5.2",
     "@supabase/supabase-js": "^2.45.4",
+    "iconv-lite": "^0.6.3",
     "next": "^15.0.0",
     "openai": "^4.68.0",
+    "papaparse": "^5.4.1",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "resend": "^4.0.0"
   },
   "devDependencies": {
     "@types/node": "^20",
+    "@types/papaparse": "^5.3.14",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "autoprefixer": "^10.4.20",

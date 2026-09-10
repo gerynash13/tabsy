@@ -20,6 +20,7 @@ export default async function ClientsPage() {
       {!clients?.length ? (
         <p className="text-sm text-ink/50">No clients yet.</p>
       ) : (
+        <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-ink/10 text-left text-ink/50">
@@ -42,6 +43,7 @@ export default async function ClientsPage() {
             ))}
           </tbody>
         </table>
+        </div>
       )}
     </div>
   )

@@ -18,10 +18,10 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   return (
     <div className="min-h-screen bg-paper text-ink">
-      <header className="flex items-center justify-between border-b border-ink/10 px-6 py-4">
-        <div className="flex items-center gap-8">
+      <header className="flex flex-wrap items-center justify-between gap-3 border-b border-ink/10 px-6 py-4">
+        <div className="flex flex-wrap items-center gap-x-8 gap-y-2">
           <span className="text-lg font-medium tracking-tight text-ledger">tabsy</span>
-          <nav className="flex gap-5 text-sm">
+          <nav className="flex flex-wrap gap-x-5 gap-y-1 text-sm">
             <Link href="/dashboard" className="hover:text-ledger">
               Dashboard
             </Link>
@@ -40,7 +40,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           <button className="text-sm text-ink/50 hover:text-ink">Sign out</button>
         </form>
       </header>
-      <main className="mx-auto max-w-4xl px-6 py-8">{children}</main>
+      <main className="mx-auto max-w-4xl px-4 py-8 sm:px-6">{children}</main>
     </div>
   )
 }

@@ -16,7 +16,7 @@ const groq = new OpenAI({
   baseURL: 'https://api.groq.com/openai/v1',
 })
 
-const MODEL = 'openai/gpt-oss-20b' // Groq's free tier model, ~30 requests/minute
+const MODEL = 'llama-3.3-70b-versatile'
 
 const STAGES = [
   { offset: -3, tone: 'a friendly heads-up, sent 3 days before the invoice is due' },
