@@ -7,6 +7,7 @@ create table profiles (
   email text not null,
   business_name text,
   bank_details jsonb not null default '{}'::jsonb,
+  invoice_registration_number text,
   reminder_offsets int[] not null default '{-3,0,3,7,14}',
   created_at timestamptz not null default now()
 );
@@ -16,7 +17,10 @@ create table clients (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null references profiles(id) on delete cascade,
   name text not null,
+  company_name text,
   contact_email text,
+  phone text,
+  notes text,
   preferred_language text not null default 'ja' check (preferred_language in ('ja', 'en')),
   created_at timestamptz not null default now()
 );
@@ -31,10 +35,12 @@ create table invoices (
   invoice_number text not null,
   amount numeric(12, 2) not null,
   currency text not null default 'JPY',
+  issue_date date,
   due_date date not null,
   status invoice_status not null default 'unpaid',
   pdf_url text,
   notes text,
+  line_items jsonb not null default '[]'::jsonb,
   created_at timestamptz not null default now()
 );
 

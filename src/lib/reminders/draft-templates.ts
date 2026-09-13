@@ -56,3 +56,34 @@ Rules:
 
   return JSON.parse(cleaned) as { offset: number; subject: string; body: string }[]
 }
+
+// Drafts just one stage — used by the per-stage "Regenerate with AI"
+// button, so improving one email doesn't touch the other four.
+export async function draftSingleTemplate(language: 'ja' | 'en', businessName: string, offset: number) {
+  const stage = STAGES.find((s) => s.offset === offset)
+  if (!stage) throw new Error(`Unknown stage offset: ${offset}`)
+
+  const languageName = language === 'ja' ? 'Japanese (natural, polite business keigo)' : 'English'
+
+  const prompt = `Write one invoice payment reminder email in ${languageName}, sent on behalf of a freelancer or small business called "${businessName}".
+
+This email is ${stage.tone}.
+
+Rules:
+- Use exactly these placeholders where relevant, written literally with double curly braces: {{client_name}}, {{invoice_number}}, {{amount}}, {{due_date}}, {{business_name}}. Do not invent other placeholders.
+- Do not include any payment or bank details — those are appended separately by the system afterward.
+- Keep the email to 3-5 sentences.
+- Respond with ONLY a JSON object, no markdown fences, no commentary, in exactly this shape:
+{"subject": "...", "body": "..."}`
+
+  const response = await groq.chat.completions.create({
+    model: MODEL,
+    max_tokens: 800,
+    messages: [{ role: 'user', content: prompt }],
+  })
+
+  const raw = response.choices[0]?.message?.content ?? '{}'
+  const cleaned = raw.replace(/```json|```/g, '').trim()
+
+  return JSON.parse(cleaned) as { subject: string; body: string }
+}

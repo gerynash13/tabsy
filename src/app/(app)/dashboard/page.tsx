@@ -1,5 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { todayInJST, daysBetween } from '@/lib/reminders/dates'
+import { getLocale } from '@/lib/i18n/get-locale'
+import { getDictionary } from '@/lib/i18n/dictionaries'
 import Link from 'next/link'
 
 type Row = {
@@ -13,6 +15,7 @@ type Row = {
 }
 
 export default async function DashboardPage() {
+  const dict = getDictionary(await getLocale())
   const supabase = await createClient()
   const { data } = await supabase
     .from('invoices')
@@ -30,39 +33,37 @@ export default async function DashboardPage() {
 
   return (
     <div>
-      <h1 className="mb-6 text-xl font-medium">Dashboard</h1>
+      <h1 className="mb-6 text-xl font-medium">{dict.dashboard.title}</h1>
 
       <div className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-3">
         <div className="rounded-md border border-ink/10 p-4">
-          <p className="text-xs text-ink/50">Outstanding</p>
-          {/* Naive sum — assumes a single currency for now, per the
-              deferred multi-currency item in the project brief. */}
+          <p className="text-xs text-ink/50">{dict.dashboard.outstanding}</p>
           <p className="mt-1 text-2xl font-medium text-ledger">
             {rows[0]?.currency ?? 'JPY'} {totalOutstanding.toLocaleString()}
           </p>
         </div>
         <div className="rounded-md border border-ink/10 p-4">
-          <p className="text-xs text-ink/50">Due soon (7 days)</p>
+          <p className="text-xs text-ink/50">{dict.dashboard.dueSoonCard}</p>
           <p className="mt-1 text-2xl font-medium">{dueSoon.length}</p>
         </div>
         <div className="rounded-md border border-ink/10 p-4">
-          <p className="text-xs text-ink/50">Overdue</p>
+          <p className="text-xs text-ink/50">{dict.dashboard.overdueCard}</p>
           <p className="mt-1 text-2xl font-medium text-overdue">{overdue.length}</p>
         </div>
       </div>
 
-      <InvoiceSection title="Overdue" rows={overdue} />
-      <InvoiceSection title="Due soon" rows={dueSoon} />
+      <InvoiceSection title={dict.dashboard.overdueSection} rows={overdue} emptyLabel={dict.dashboard.empty} />
+      <InvoiceSection title={dict.dashboard.dueSoonSection} rows={dueSoon} emptyLabel={dict.dashboard.empty} />
     </div>
   )
 }
 
-function InvoiceSection({ title, rows }: { title: string; rows: Row[] }) {
+function InvoiceSection({ title, rows, emptyLabel }: { title: string; rows: Row[]; emptyLabel: string }) {
   return (
     <div className="mb-8">
       <h2 className="mb-3 text-sm font-medium text-ink/70">{title}</h2>
       {!rows.length ? (
-        <p className="text-sm text-ink/40">Nothing here.</p>
+        <p className="text-sm text-ink/40">{emptyLabel}</p>
       ) : (
         <div className="overflow-x-auto">
         <table className="w-full text-sm">

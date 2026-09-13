@@ -38,6 +38,21 @@ async function main() {
     )
   }
 
+  // Clear out any TEST-* invoices from a previous run first. Without
+  // this, re-running the seed script just keeps piling up new invoices
+  // with the same amount — which is exactly what made the dashboard
+  // total look like duplicates were being sent, when really it was just
+  // accumulating real (test) invoices from every previous run.
+  const { error: cleanupError } = await supabase
+    .from('invoices')
+    .delete()
+    .eq('client_id', client.id)
+    .like('invoice_number', 'TEST-%')
+
+  if (cleanupError) {
+    console.warn('Could not clean up previous test invoices:', cleanupError.message)
+  }
+
   const today = todayInJST()
   const offsets = [-3, 0, 3, 7, 14]
 

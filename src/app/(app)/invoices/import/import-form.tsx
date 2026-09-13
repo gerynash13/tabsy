@@ -2,10 +2,13 @@
 
 import { useActionState } from 'react'
 import { importCsvAction, type ImportState } from './actions'
+import type { dictionaries } from '@/lib/i18n/dictionaries'
 
 const initialState: ImportState = { success: 0, errors: [] }
 
-export function ImportForm() {
+type ImportDict = (typeof dictionaries)['en']['invoices']['import']
+
+export function ImportForm({ dict }: { dict: ImportDict }) {
   const [state, formAction, isPending] = useActionState(importCsvAction, initialState)
 
   return (
@@ -22,18 +25,20 @@ export function ImportForm() {
         disabled={isPending}
         className="rounded-md bg-ledger px-4 py-2 text-sm text-paper disabled:opacity-50"
       >
-        {isPending ? 'Importing…' : 'Import'}
+        {isPending ? dict.importing : dict.importButton}
       </button>
 
       {state.success > 0 && (
         <p className="rounded-md bg-tabAccent/10 px-4 py-2 text-sm text-ledger">
-          Imported {state.success} invoice{state.success === 1 ? '' : 's'}.
+          {dict.successPrefix} {state.success} {state.success === 1 ? dict.successSuffixOne : dict.successSuffixMany}
         </p>
       )}
 
       {state.errors.length > 0 && (
         <div className="rounded-md bg-overdue/10 px-4 py-3 text-sm text-overdue">
-          <p className="mb-1 font-medium">{state.errors.length} row(s) skipped:</p>
+          <p className="mb-1 font-medium">
+            {state.errors.length} {dict.errorsPrefix}
+          </p>
           <ul className="list-inside list-disc space-y-0.5">
             {state.errors.map((err, i) => (
               <li key={i}>{err}</li>

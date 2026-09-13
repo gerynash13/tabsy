@@ -1,4 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
+import { getLocale } from '@/lib/i18n/get-locale'
+import { getDictionary } from '@/lib/i18n/dictionaries'
 import Link from 'next/link'
 
 type InvoiceRow = {
@@ -11,22 +13,14 @@ type InvoiceRow = {
   clients: { name: string } | null
 }
 
-// Status is now genuinely stored and kept current by the daily cron job
-// (see Week 3's update to the cron route) — no more computing "overdue"
-// on the fly here. One small caveat worth knowing: since the cron only
-// runs once a day, a due date that just passed today may still show as
-// "unpaid" until the next run.
-function StatusBadge({ status }: { status: InvoiceRow['status'] }) {
-  const styles =
-    status === 'paid'
-      ? 'bg-tabAccent/10 text-tabAccent'
-      : status === 'overdue'
-        ? 'bg-overdue/10 text-overdue'
-        : 'bg-ink/5 text-ink/60'
-  return <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${styles}`}>{status}</span>
-}
-
 export default async function InvoicesPage() {
+  const dict = getDictionary(await getLocale())
+  const statusLabels = {
+    unpaid: dict.invoices.statusUnpaid,
+    overdue: dict.invoices.statusOverdue,
+    paid: dict.invoices.statusPaid,
+  }
+
   const supabase = await createClient()
   const { data: invoices } = await supabase
     .from('invoices')
@@ -37,49 +31,59 @@ export default async function InvoicesPage() {
   return (
     <div>
       <div className="mb-6 flex flex-wrap items-center justify-between gap-2">
-        <h1 className="text-xl font-medium">Invoices</h1>
+        <h1 className="text-xl font-medium">{dict.invoices.title}</h1>
         <div className="flex gap-2">
           <Link href="/invoices/import" className="rounded-md border border-ink/15 px-3 py-1.5 text-sm text-ink/70">
-            Import CSV
+            {dict.invoices.importCsv}
           </Link>
           <Link href="/invoices/new" className="rounded-md bg-ledger px-3 py-1.5 text-sm text-paper">
-            New invoice
+            {dict.invoices.newInvoice}
           </Link>
         </div>
       </div>
 
       {!invoices?.length ? (
-        <p className="text-sm text-ink/50">No invoices yet.</p>
+        <p className="text-sm text-ink/50">{dict.invoices.empty}</p>
       ) : (
         <div className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead>
             <tr className="border-b border-ink/10 text-left text-ink/50">
-              <th className="py-2 font-normal">Invoice</th>
-              <th className="py-2 font-normal">Client</th>
-              <th className="py-2 font-normal">Amount</th>
-              <th className="py-2 font-normal">Due</th>
-              <th className="py-2 font-normal">Status</th>
+              <th className="py-2 font-normal">{dict.invoices.colInvoice}</th>
+              <th className="py-2 font-normal">{dict.invoices.colClient}</th>
+              <th className="py-2 font-normal">{dict.invoices.colAmount}</th>
+              <th className="py-2 font-normal">{dict.invoices.colDue}</th>
+              <th className="py-2 font-normal">{dict.invoices.colStatus}</th>
             </tr>
           </thead>
           <tbody>
-            {invoices.map((inv) => (
-              <tr key={inv.id} className="border-b border-ink/5">
-                <td className="py-2">
-                  <Link href={`/invoices/${inv.id}`} className="hover:text-ledger">
-                    {inv.invoice_number}
-                  </Link>
-                </td>
-                <td className="py-2 text-ink/70">{inv.clients?.name}</td>
-                <td className="py-2 text-ink/70">
-                  {inv.currency} {Number(inv.amount).toLocaleString()}
-                </td>
-                <td className="py-2 text-ink/70">{inv.due_date}</td>
-                <td className="py-2">
-                  <StatusBadge status={inv.status} />
-                </td>
-              </tr>
-            ))}
+            {invoices.map((inv) => {
+              const styles =
+                inv.status === 'paid'
+                  ? 'bg-tabAccent/10 text-tabAccent'
+                  : inv.status === 'overdue'
+                    ? 'bg-overdue/10 text-overdue'
+                    : 'bg-ink/5 text-ink/60'
+              return (
+                <tr key={inv.id} className="border-b border-ink/5">
+                  <td className="py-2">
+                    <Link href={`/invoices/${inv.id}`} className="hover:text-ledger">
+                      {inv.invoice_number}
+                    </Link>
+                  </td>
+                  <td className="py-2 text-ink/70">{inv.clients?.name}</td>
+                  <td className="py-2 text-ink/70">
+                    {inv.currency} {Number(inv.amount).toLocaleString()}
+                  </td>
+                  <td className="py-2 text-ink/70">{inv.due_date}</td>
+                  <td className="py-2">
+                    <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${styles}`}>
+                      {statusLabels[inv.status]}
+                    </span>
+                  </td>
+                </tr>
+              )
+            })}
           </tbody>
         </table>
         </div>

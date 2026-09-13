@@ -1,41 +1,38 @@
 # tabsy
 
-## Week 1 — done
-Auth, clients CRUD, invoices CRUD.
+## Weeks 1-4 — done
+Auth, clients/invoices CRUD, daily reminder engine (Resend), dashboard, bank details, real overdue status, AI-assisted templates (Groq), CSV import, mobile pass.
 
-## Week 2 — done
-Daily reminder cron job, Resend integration, default JA/EN templates, idempotent send logging.
+## Post-MVP round 1 — done
+Manual "send reminders now" button, idempotent seed script, currency/bank/account-type dropdowns, expanded client fields, per-stage AI regeneration, full Japanese UI translation.
 
-## Week 3 — done
-Dashboard, bank details in settings, real stored "overdue" status, AI-assisted template editor (Groq).
-
-## Week 4 — CSV import, polish, soft launch
+## Now — インボイス制度-compliant invoice PDF generation
 
 ### New setup steps
 
-1. **Install the new dependencies:**
-   ```
-   npm install
-   ```
-   This adds `papaparse` (CSV parsing) and `iconv-lite` (Shift-JIS decoding).
+1. **Run the migration**: `supabase/migrations/004_invoice_pdf.sql` — one statement batch, no ordering gotchas.
+2. **Install the new dependency**: `npm install` (adds `@react-pdf/renderer`).
+3. **If you're a registered qualified invoice issuer**, add your registration number in Settings (format: `T` + 13 digits — the app validates this and won't save anything else). Leave it blank if you're tax-exempt (免税事業者); the PDF still generates either way, it just won't legally qualify as a 適格請求書 for the recipient without a valid number.
+4. **On any invoice**, add at least one line item (description, quantity, unit price — tax-excluded — and tax rate) to unlock the "Download PDF" link. Invoices without line items keep working exactly as before; this is fully additive, nothing existing breaks.
 
-2. **Try the CSV import.** Go to Invoices → Import CSV. A sample file matching the expected format is included at `sample-invoices.csv` in the project root — upload it as a first test. Required columns: `client_name`, `invoice_number`, `amount`, `due_date`. `client_email` and `notes` are optional; `currency` defaults to `JPY` if left blank. Clients are matched by email (falling back to name if there's no email column) and created automatically if they don't already exist.
+### What's actually in the PDF
 
-3. **If you want to test the Shift-JIS handling specifically**, save a CSV from Excel on a Japanese-locale Windows machine (Excel's default CSV export there is commonly Shift-JIS, not UTF-8) and import that — this is the actual real-world case the encoding detection exists for.
+Per 国税庁's published requirements for a 適格請求書 (as of 令和7年4月1日, current at the time this was built), six things are legally required, all present here:
+1. Issuer name + registration number
+2. Transaction date (発行日 — new `issue_date` field, separate from due date)
+3. Description of each line item, with reduced-rate (8%) items marked
+4. Subtotal per tax rate (10%/8%), tax-excluded
+5. Consumption tax amount per tax rate
+6. Recipient name (the client)
 
-### What's new
+**The one rule that actually mattered to get right**: consumption tax must be rounded exactly once per tax rate for the whole invoice — never per line item, then summed. `src/lib/invoices/calculate.ts` sums every line's exact, unrounded amount by rate first, and only rounds once at the end, per rate group. This is directly from 国税庁's guidance (消令70の10) — summing pre-rounded per-line amounts is explicitly disallowed and produces a different total than the compliant method.
 
-- **CSV import** (`/invoices/import`) — decodes UTF-8 or Shift-JIS automatically, parses with `papaparse`, reports exactly which rows succeeded and which were skipped and why (missing field, bad date, etc.), rather than failing the whole file on one bad row.
-- **Mobile pass** — tables scroll horizontally instead of breaking layout on narrow screens, the dashboard's summary cards stack to one column, and the nav wraps instead of overflowing.
-- **Cron route now has a top-level error handler** — an unexpected failure (bad query, schema mismatch, anything) now returns a proper JSON error and logs clearly via `console.error`, which shows up in Vercel's Logs tab with zero extra setup. That's genuinely enough monitoring for this stage. If you want real alerting later (a notification when something fails, not just a log you have to go look at), run `npx @sentry/wizard@latest -i nextjs` yourself when you're ready — it needs an interactive setup this delivery format can't do safely on your behalf, and hand-writing that config blind is more likely to introduce a subtle bug than to help.
+### What this doesn't do, on purpose
 
-### Before you send a reminder to an actual client (soft-launch checklist)
-
-- [ ] Verify your own domain in Resend (Domains → Add Domain) and switch `REMINDER_FROM_EMAIL` off the shared sandbox sender — a freshly verified domain needs a little time to build sending reputation, so do this a few days before you need it, not the day of.
-- [ ] Have someone fluent in business Japanese read through your saved templates in Settings → Manage email templates — AI-drafted copy is a starting point, not something to trust unread, especially for the more firmly-worded overdue stages.
-- [ ] Fill in real bank transfer details in Settings and confirm they render correctly in a test email to yourself.
-- [ ] Delete any leftover `TEST-*` invoices from earlier testing.
-- [ ] Re-run the Week 2 test loop (seed → trigger cron → trigger again) one more time end to end, now with real templates and real bank details, before pointing it at a real invoice.
+- **This is not a substitute for review by an accountant or tax advisor** before you rely on it for real filings. The six required fields and the rounding rule are handled correctly as far as this was researched and built, but tax law has edge cases (mixed transaction types, imports, agency/brokerage invoicing, the small-business transition-period rules through 2029) that aren't handled here and weren't in scope.
+- Only two tax rates are supported (10% standard, 8% reduced) — the two that apply to virtually all freelance/consulting service invoices. No handling for non-taxable or export transactions.
+- No 適格簡易請求書 (simplified qualified invoice, for retail/restaurant/taxi businesses) — not relevant to Tabsy's target user.
+- The PDF has no logo, custom branding, or layout options yet — it's deliberately plain, correctness-first.
 
 ## Still not done
-Stripe/payment links, multi-currency, team accounts, invoice PDF generation with インボイス制度-compliant formatting.
+Multi-currency support, Stripe payment links, team accounts.
