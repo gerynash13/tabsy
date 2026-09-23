@@ -2,6 +2,7 @@ import { createClient } from '@/lib/supabase/server'
 import { getLocale } from '@/lib/i18n/get-locale'
 import { getDictionary } from '@/lib/i18n/dictionaries'
 import { calculateInvoiceTotal, type LineItem } from '@/lib/invoices/calculate'
+import { SUPPORTED_CURRENCIES } from '@/lib/invoices/currencies'
 import { LineItemsEditor } from '../_components/line-items-editor'
 import { redirect } from 'next/navigation'
 
@@ -138,14 +139,11 @@ export default async function NewInvoicePage() {
                 defaultValue="JPY"
                 className="w-full rounded-md border border-ink/15 px-3 py-2 text-sm outline-none focus:border-ledger"
               >
-                <option value="JPY">JPY</option>
-                <option value="USD">USD</option>
-                <option value="EUR">EUR</option>
-                <option value="GBP">GBP</option>
-                <option value="AUD">AUD</option>
-                <option value="CAD">CAD</option>
-                <option value="CNY">CNY</option>
-                <option value="KRW">KRW</option>
+                {SUPPORTED_CURRENCIES.map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
               </select>
             </div>
           </div>

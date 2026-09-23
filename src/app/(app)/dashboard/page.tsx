@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { todayInJST, daysBetween } from '@/lib/reminders/dates'
+import { groupByCurrency } from '@/lib/invoices/currencies'
 import { getLocale } from '@/lib/i18n/get-locale'
 import { getDictionary } from '@/lib/i18n/dictionaries'
 import Link from 'next/link'
@@ -27,7 +28,7 @@ export default async function DashboardPage() {
   const rows = data ?? []
   const today = todayInJST()
 
-  const totalOutstanding = rows.reduce((sum, inv) => sum + Number(inv.amount), 0)
+  const totalOutstanding = groupByCurrency(rows)
   const overdue = rows.filter((inv) => inv.status === 'overdue')
   const dueSoon = rows.filter((inv) => inv.status === 'unpaid' && daysBetween(inv.due_date, today) <= 7)
 
@@ -38,9 +39,17 @@ export default async function DashboardPage() {
       <div className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-3">
         <div className="rounded-md border border-ink/10 p-4">
           <p className="text-xs text-ink/50">{dict.dashboard.outstanding}</p>
-          <p className="mt-1 text-2xl font-medium text-ledger">
-            {rows[0]?.currency ?? 'JPY'} {totalOutstanding.toLocaleString()}
-          </p>
+          {totalOutstanding.length === 0 ? (
+            <p className="mt-1 text-2xl font-medium text-ledger">JPY 0</p>
+          ) : (
+            <div className="mt-1 space-y-0.5">
+              {totalOutstanding.map(({ currency, total }) => (
+                <p key={currency} className="text-2xl font-medium text-ledger">
+                  {currency} {total.toLocaleString()}
+                </p>
+              ))}
+            </div>
+          )}
         </div>
         <div className="rounded-md border border-ink/10 p-4">
           <p className="text-xs text-ink/50">{dict.dashboard.dueSoonCard}</p>

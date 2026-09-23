@@ -1,6 +1,6 @@
 import { createAdminClient } from '@/lib/supabase/admin'
 import { todayInJST, addDays } from './dates'
-import { getTemplate, formatAmount, bankSection } from './templates'
+import { getTemplate, formatAmount, bankSection, paymentLinkSection } from './templates'
 import { interpolate } from './render'
 import { Resend } from 'resend'
 
@@ -25,7 +25,7 @@ export async function runReminderSweep(): Promise<SweepResult> {
   const { data: invoices, error } = await supabase
     .from('invoices')
     .select(
-      'id, invoice_number, amount, currency, due_date, status, clients(name, contact_email, preferred_language), profiles(id, business_name, bank_details, reminder_offsets)'
+      'id, invoice_number, amount, currency, due_date, status, stripe_payment_link_url, clients(name, contact_email, preferred_language), profiles(id, business_name, bank_details, reminder_offsets)'
     )
     .neq('status', 'paid')
 
@@ -75,7 +75,10 @@ export async function runReminderSweep(): Promise<SweepResult> {
           business_name: profile.business_name || 'Tabsy',
         }
         subject = interpolate(custom.subject, vars)
-        body = interpolate(custom.body, vars) + bankSection(profile.bank_details, lang)
+        body =
+          interpolate(custom.body, vars) +
+          bankSection(profile.bank_details, lang) +
+          paymentLinkSection(inv.stripe_payment_link_url, lang)
       } else {
         const template = getTemplate(offset, lang, {
           clientName: client.name,
@@ -85,6 +88,7 @@ export async function runReminderSweep(): Promise<SweepResult> {
           dueDate: inv.due_date,
           businessName: profile.business_name || 'Tabsy',
           bankDetails: profile.bank_details,
+          paymentLinkUrl: inv.stripe_payment_link_url,
         })
         subject = template.subject
         body = template.body

@@ -41,6 +41,8 @@ create table invoices (
   pdf_url text,
   notes text,
   line_items jsonb not null default '[]'::jsonb,
+  stripe_payment_link_id text,
+  stripe_payment_link_url text,
   created_at timestamptz not null default now()
 );
 

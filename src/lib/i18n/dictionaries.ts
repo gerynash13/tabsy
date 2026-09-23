@@ -56,6 +56,10 @@ export const dictionaries = {
         downloadPdf: 'Download PDF',
         noRegistrationWarning:
           'No registration number set in Settings — this PDF will still generate, but will not qualify as a 適格請求書 (qualified invoice) for the recipient.',
+        paymentLinkTitle: 'Online payment',
+        createPaymentLink: 'Create payment link',
+        openLink: 'Open ↗',
+        stripeNotConfigured: 'Stripe is not configured — set STRIPE_SECRET_KEY to enable online payment links.',
       },
       lineItems: {
         description: 'Description',
@@ -208,6 +212,10 @@ export const dictionaries = {
         downloadPdf: 'PDFをダウンロード',
         noRegistrationWarning:
           '設定に登録番号が未入力です。PDFは生成されますが、取引先にとっての適格請求書（インボイス）としては扱われません。',
+        paymentLinkTitle: 'オンライン決済',
+        createPaymentLink: '決済リンクを作成',
+        openLink: '開く ↗',
+        stripeNotConfigured: 'Stripeが未設定です。STRIPE_SECRET_KEYを設定すると決済リンクを有効化できます。',
       },
       lineItems: {
         description: '品目',

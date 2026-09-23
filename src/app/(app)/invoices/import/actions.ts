@@ -3,6 +3,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { decodeCsv } from '@/lib/csv/decode'
 import { parseDate } from '@/lib/csv/parse-date'
+import { SUPPORTED_CURRENCIES, isSupportedCurrency } from '@/lib/invoices/currencies'
 import { redirect } from 'next/navigation'
 import Papa from 'papaparse'
 
@@ -59,6 +60,12 @@ export async function importCsvAction(_prev: ImportState, formData: FormData): P
       continue
     }
 
+    const currency = (row.currency?.trim() || 'JPY').toUpperCase()
+    if (!isSupportedCurrency(currency)) {
+      errors.push(`Row ${rowNum}: unsupported currency "${row.currency}" (supported: ${SUPPORTED_CURRENCIES.join(', ')})`)
+      continue
+    }
+
     const cacheKey = (clientEmail || clientName).toLowerCase()
     let clientId = clientCache.get(cacheKey)
 
@@ -100,7 +107,7 @@ export async function importCsvAction(_prev: ImportState, formData: FormData): P
       client_id: clientId,
       invoice_number: invoiceNumber,
       amount,
-      currency: row.currency?.trim() || 'JPY',
+      currency,
       due_date: dueDate,
       notes: row.notes?.trim() || null,
     })

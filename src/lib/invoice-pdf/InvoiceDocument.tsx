@@ -8,8 +8,8 @@ import { calculateTaxGroups, type LineItem } from '@/lib/invoices/calculate'
 Font.register({
   family: 'Noto Sans JP',
   fonts: [
-    { src: 'https://fonts.gstatic.com/s/notosansjp/v56/-F6jfjtqLzI2JPCgQBnw7HFyzSD-AsregP8VFBEj75s.ttf', fontWeight: 'normal' },
-    { src: 'https://fonts.gstatic.com/s/notosansjp/v56/-F6jfjtqLzI2JPCgQBnw7HFyzSD-AsregP8VFPYk75s.ttf', fontWeight: 'bold' },
+    { src: 'https://fonts.gstatic.com/ea/notosansjapanese/v6/NotoSansJP-Regular.otf', fontWeight: 'normal' },
+    { src: 'https://fonts.gstatic.com/ea/notosansjapanese/v6/NotoSansJP-Bold.otf', fontWeight: 'bold' },
   ],
 })
 
