@@ -1,73 +1,127 @@
 # tabsy
 
-## Weeks 1-4 — done
-Auth, clients/invoices CRUD, daily reminder engine (Resend), dashboard, bank details, real overdue status, AI-assisted templates (Groq), CSV import, mobile pass.
+**Invoice reminders for freelancers and small businesses — the awkward payment chase, automated.**
 
-## Post-MVP round 1 — done
-Manual "send reminders now" button, idempotent seed script, currency/bank/account-type dropdowns, expanded client fields, per-stage AI regeneration, full Japanese UI translation.
+Built Japan-first: bank transfer (振込) is the default payment norm here, not cards, and the whole product is designed around that rather than treating it as an edge case.
 
-## Now — インボイス制度-compliant invoice PDF generation
+🇯🇵 [日本語版はこちら](./README.ja.md)
 
-### New setup steps
+---
 
-1. **Run the migration**: `supabase/migrations/004_invoice_pdf.sql` — one statement batch, no ordering gotchas.
-2. **Install the new dependency**: `npm install` (adds `@react-pdf/renderer`).
-3. **If you're a registered qualified invoice issuer**, add your registration number in Settings (format: `T` + 13 digits — the app validates this and won't save anything else). Leave it blank if you're tax-exempt (免税事業者); the PDF still generates either way, it just won't legally qualify as a 適格請求書 for the recipient without a valid number.
-4. **On any invoice**, add at least one line item (description, quantity, unit price — tax-excluded — and tax rate) to unlock the "Download PDF" link. Invoices without line items keep working exactly as before; this is fully additive, nothing existing breaks.
+## The problem
 
-### What's actually in the PDF
+Freelancers, consultants, and tiny agencies lose real time and money chasing unpaid invoices: remembering to follow up, writing an awkward reminder email, losing track of who's actually late. Enterprise accounts-receivable software (Monk, Gaviti, Centime) is built for finance teams, not solo operators. Tabsy fills that gap — track invoices, send well-timed reminders automatically, and see who owes what at a glance.
 
-Per 国税庁's published requirements for a 適格請求書 (as of 令和7年4月1日, current at the time this was built), six things are legally required, all present here:
-1. Issuer name + registration number
-2. Transaction date (発行日 — new `issue_date` field, separate from due date)
-3. Description of each line item, with reduced-rate (8%) items marked
-4. Subtotal per tax rate (10%/8%), tax-excluded
-5. Consumption tax amount per tax rate
-6. Recipient name (the client)
+**Positioning decision, made deliberately in week 1:** Tabsy is a reminder *layer*, not an invoice generator. Users log invoice data (and can attach a PDF made elsewhere) rather than Tabsy producing the source document. This keeps the core product small and sidesteps most of Japan's qualified invoice system (インボイス制度) compliance burden — until the point where PDF generation was explicitly added as its own scoped feature, with that compliance work done properly rather than avoided (see below).
 
-**The one rule that actually mattered to get right**: consumption tax must be rounded exactly once per tax rate for the whole invoice — never per line item, then summed. `src/lib/invoices/calculate.ts` sums every line's exact, unrounded amount by rate first, and only rounds once at the end, per rate group. This is directly from 国税庁's guidance (消令70の10) — summing pre-rounded per-line amounts is explicitly disallowed and produces a different total than the compliant method.
+## Features
 
-### What this doesn't do, on purpose
+**Core loop**
+- Magic-link auth (no passwords — there's no meaningful distinction between "sign up" and "sign in" for a single email-based flow, so building one would have been pure overhead)
+- Client and invoice management, with CSV import (Shift-JIS/CP932-aware, for Excel exports from Japanese-locale Windows)
+- Dashboard: outstanding total (grouped by currency, never summed across them), due-soon and overdue lists
+- Invoice status (unpaid / overdue / paid) computed automatically by the same daily job that sends reminders
 
-- **This is not a substitute for review by an accountant or tax advisor** before you rely on it for real filings. The six required fields and the rounding rule are handled correctly as far as this was researched and built, but tax law has edge cases (mixed transaction types, imports, agency/brokerage invoicing, the small-business transition-period rules through 2029) that aren't handled here and weren't in scope.
-- Only two tax rates are supported (10% standard, 8% reduced) — the two that apply to virtually all freelance/consulting service invoices. No handling for non-taxable or export transactions.
-- No 適格簡易請求書 (simplified qualified invoice, for retail/restaurant/taxi businesses) — not relevant to Tabsy's target user.
-- The PDF has no logo, custom branding, or layout options yet — it's deliberately plain, correctness-first.
+**Reminder engine**
+- Configurable offsets (default: −3d, due date, +3d, +7d, +14d), tone escalating from friendly to firm
+- Runs once daily, computing "due today" in JST regardless of the server's own timezone
+- Idempotent by construction — the same invoice can never be reminded twice for the same offset, even if the job runs twice
+- Bilingual (Japanese/English) default templates, or AI-drafted (via Groq, free tier) per-user templates — editable per stage, individually regenerable without touching the other four
 
-## Still not done
-Team accounts.
+**Compliance**
+- On-demand PDF generation meeting Japan's qualified invoice (適格請求書) requirements: registration number, per-line tax rate, tax calculated and rounded per NTA's actual rule (see below), all six legally required fields present
+- Optional Stripe payment links appended to reminder emails, with correct zero-decimal-currency handling and signature-verified webhook confirmation
 
-## Stripe payment links
+**Everything else**
+- Full Japanese/English UI (a cookie-based locale, separate from — and never confused with — each client's own reminder-language preference)
+- Multi-currency support, with per-currency dashboard totals (no invented exchange-rate conversion)
 
-### Setup
+## Tech stack
 
-1. **Run the migration**: `supabase/migrations/005_stripe_payment_links.sql`.
-2. **Install the new dependency**: `npm install` (adds `stripe`).
-3. **Get your Stripe secret key** from the Stripe Dashboard (Developers → API keys) — use a **test mode** key while you're trying this out, not a live one. Add it to `.env.local`:
-   ```
-   STRIPE_SECRET_KEY=sk_test_...
-   ```
-4. **Set up the webhook** so payments actually mark invoices as paid automatically:
-   - **Local testing**: install the [Stripe CLI](https://stripe.com/docs/stripe-cli), run `stripe login`, then `stripe listen --forward-to localhost:3000/api/webhooks/stripe`. It prints a webhook signing secret starting `whsec_...` — put that in `.env.local` as `STRIPE_WEBHOOK_SECRET`. Leave this running in a terminal while you test.
-   - **Production (Vercel)**: in the Stripe Dashboard, add an endpoint pointing at `https://yourdomain.com/api/webhooks/stripe`, listening for `checkout.session.completed` and `checkout.session.async_payment_succeeded`. Copy its signing secret into Vercel's env vars as `STRIPE_WEBHOOK_SECRET`.
-5. Leaving both variables unset is fine — the "Create payment link" button just doesn't appear, and nothing else about the app changes.
+| Layer | Choice | Why |
+|---|---|---|
+| Framework | Next.js 15 (App Router), TypeScript | One framework, one deploy target — right-sized for a solo build |
+| Database / Auth / Storage | Supabase (Postgres) | Auth, DB, and RLS-based per-user isolation in one place, generous free tier |
+| Scheduling | Vercel Cron (daily) | One sweep a day is all this needs; forced an explicit decision about JST vs. the platform's UTC clock |
+| Email | Resend | Clean API; free tier covers real usage at this scale |
+| AI (template drafting) | Groq (Llama 3.3 70B), OpenAI-compatible API | Free tier, no card required — used a handful of times per user, never at send time |
+| Payments | Stripe Payment Links | Chosen over Checkout Sessions specifically because Sessions expire in ≤24h — too short for a 17-day reminder sequence |
+| PDF generation | @react-pdf/renderer | No headless browser needed — works cleanly in a serverless function |
+| CSV parsing | papaparse + iconv-lite | The latter specifically for Shift-JIS detection/decoding |
+| UI | Tailwind + a small custom brand system | Ledger green / paper / ink / overdue-red palette, IBM Plex Sans + IBM Plex Sans JP |
 
-### What's actually happening
+## Architecture & engineering decisions worth knowing about
 
-- Uses Stripe's **Payment Links API**, not Checkout Sessions. This matters: Checkout Sessions expire after a maximum of 24 hours, which would make them useless for a reminder sequence spanning 17 days (-3 to +14). Payment Links persist until manually deactivated — created once per invoice, reused in every reminder email until paid or edited.
-- **JPY and KRW are zero-decimal currencies in Stripe's API** — the amount sent is the actual amount, not multiplied by 100 like most currencies. `src/lib/stripe/amount.ts` handles this; getting it backwards would mean charging 100x too much or too little.
-- **Webhook signature verification is mandatory, not optional** — without it, anyone who found the webhook URL could POST a fake "payment succeeded" event and mark any invoice paid for free. The handler reads the raw request body (`request.text()`, never `.json()`) and verifies it against `STRIPE_WEBHOOK_SECRET` before trusting anything in it.
-- The invoice is matched to the Stripe session via `client_reference_id` (appended as a URL parameter on the Payment Link) — Stripe's own documented mechanism for this, more reliable than depending on metadata inheriting from a Payment Link onto the session it generates.
-- If an invoice's amount or currency changes after a link was created, the old link is automatically deactivated and cleared — a stale link would charge the wrong amount, so the user has to explicitly generate a fresh one rather than an old link silently continuing to work.
-- Marking an invoice paid (manually, or automatically via the webhook) deactivates its payment link too, so nobody can pay an already-settled invoice twice from an old email.
+A flat feature list undersells what actually made this project non-trivial. A few specific decisions:
 
-### Not included
+**Idempotent reminders via claim-then-send.** `reminder_log` has a unique constraint on `(invoice_id, offset_days)`. The cron job writes to that table *before* sending the email, not after — so the write itself is the thing that can only succeed once. If the job somehow ran twice, or a future retry mechanism called it again, only one send could ever win. Get this ordering backwards (send, then log) and a crash between the two steps produces a real duplicate reminder to a real client.
 
-- Specific Japanese payment methods (Konbini, bank-transfer-via-Stripe/Furikomi) aren't hardcoded here — whatever payment methods are enabled on your Stripe account's Dashboard settings are what customers see. Enable them there if you want them offered, rather than this code assuming they're available (some require account-level eligibility/setup that varies by account).
-- No in-app view of Stripe's own transaction/payout history — that lives in the Stripe Dashboard.
+**JST math, decoupled from server time.** Vercel Cron always fires in UTC. All "is this invoice due today" logic goes through one explicit `Asia/Tokyo` conversion (`todayInJST()`), rather than trusting whatever timezone the Node process happens to think it's in.
 
-## Multi-currency support
+**Qualified invoice tax rounding, verified against source.** Japan's インボイス制度 requires consumption tax to be rounded *exactly once per tax rate, for the whole invoice* — never per line item, then summed. This is directly from 国税庁 (National Tax Agency) guidance, checked against their published rules rather than assumed; a naive per-line implementation produces a different, non-compliant total.
 
-The dashboard's outstanding total is now grouped by currency instead of naively summed across them — a ¥100,000 invoice and a $500 invoice show as two separate lines, not one meaningless combined number. `src/lib/invoices/currencies.ts` is now the single source of truth for supported currency codes, used by both invoice forms and CSV import validation (which now rejects/normalizes unsupported currency codes instead of silently accepting anything typed).
+**Stripe Payment Links, not Checkout Sessions.** Checkout Sessions cap out at a 24-hour expiration — confirmed against Stripe's docs before writing any code — which would make a link dead before most of a 17-day reminder sequence even ran. Payment Links persist until explicitly deactivated, which is what this actually needs. Invoices are matched back to completed sessions via `client_reference_id` (Stripe's documented mechanism for this), not metadata inheritance, which is less reliably documented for Payment-Link-generated sessions.
 
-**Deliberately not included:** automatic FX conversion into one combined total. That needs a live exchange-rate source and a real decision about which rate to use (the invoice's date? today's rate?) — a wrong "converted" number is worse than showing currencies separately, so this is left for a dedicated pass rather than bolted on here.
+**Zero-decimal currencies handled explicitly.** JPY and KRW aren't multiplied by 100 before being sent to Stripe's API, unlike every other supported currency here. This is a one-line detail that silently overcharges by 100x if missed.
+
+**The AI/determinism boundary.** Every reminder email's amount, date, invoice number, bank details, and payment link are inserted as plain string interpolation — never generated by a model, even when the surrounding language comes from an LLM-drafted, user-edited template. This boundary doesn't move even as the templating system got more flexible.
+
+**Multi-currency without pretending to convert currencies.** The dashboard groups outstanding totals by currency rather than summing incompatible amounts into one misleading number. Real FX conversion (and the real question of *which* rate — invoice date vs. today) was deliberately left out rather than bolted on carelessly.
+
+## Bugs found and fixed along the way
+
+Worth documenting honestly rather than pretending the first version of everything was correct:
+
+- **`dotenv/config` loads `.env`, not `.env.local`.** A seed script silently had no environment variables at all until this was caught via a `supabaseUrl is required` error and traced to the default config path.
+- **A "successful" send wasn't actually checked.** The Resend SDK returns `{ data, error }` rather than throwing — an early version of the cron job ignored the `error` field entirely, so a rejected send was reported as `"sent": true`. Fixed by actually checking the response before recording success.
+- **Stripe CLI account/sandbox mismatch.** `stripe listen`'s login session was authenticated to a different account than the one the app's API key belonged to — events fired correctly on Stripe's side but the local listener never saw them. Resolved by pinning the CLI to the exact same key via `--api-key`, removing the ambiguity entirely.
+- **Auth middleware silently blocking every server-to-server call.** The middleware gating the app behind a login redirect was also intercepting `/api/*` routes — including the Stripe webhook and, more seriously, the route Vercel's own cron scheduler calls in production. It "worked" in manual testing purely because manual tests came from an already-authenticated browser tab, masking the bug until it was tested via `curl`/incognito with no session at all. Fixed by excluding `/api/*` from the middleware's matcher; each API route already checks its own authorization (Stripe's signature, a bearer secret, or a direct Supabase session check).
+
+## Project structure
+
+```
+src/
+  app/
+    (app)/                    # authenticated routes (dashboard, invoices, clients, settings)
+    api/
+      cron/reminders/         # the daily reminder sweep, called by Vercel Cron
+      webhooks/stripe/        # signature-verified payment confirmation
+      invoices/[id]/pdf/      # on-demand qualified-invoice PDF
+      locale/                 # sets the UI language cookie
+    auth/callback/            # magic-link session exchange
+    login/
+  lib/
+    reminders/                # dates (JST math), templates, AI drafting, the sweep itself
+    stripe/                   # payment link creation/deactivation, zero-decimal amount handling
+    invoices/                 # tax calculation (qualified-invoice rounding), currency list
+    invoice-pdf/               # the React-PDF document template
+    csv/                      # Shift-JIS-aware decoding, date parsing
+    i18n/                     # locale cookie + full EN/JA dictionary
+    supabase/                 # server, browser, and service-role clients
+supabase/
+  schema.sql                  # full schema for a fresh install
+  migrations/                 # incremental migrations for an existing database
+```
+
+## Getting started
+
+1. Create a Supabase project and run `supabase/schema.sql` in its SQL editor.
+2. Copy `.env.local.example` to `.env.local` and fill in Supabase, Resend, and (optionally) Groq/Stripe credentials.
+3. `npm install && npm run dev`.
+4. `npm run seed` creates test invoices at each reminder offset for exercising the engine locally.
+
+See [`DEVELOPMENT.md`](./DEVELOPMENT.md) (the working development log this document was distilled from) for the full week-by-week build process and setup detail for each individual feature.
+
+## Known limitations
+
+- No team/multi-user accounts yet — every table's row-level security currently assumes one user owns everything it touches.
+- The qualified-invoice PDF generator was built carefully against 国税庁's published requirements, but **is not a substitute for review by an accountant or tax advisor** before relying on it for real filings — transition-period rules, agency invoicing, and other edge cases weren't in scope.
+- No automatic currency conversion on the dashboard, by design (see above).
+
+## Development process
+
+Built through an extended pair-programming process with Claude (Anthropic), with every scoping call, feature priority, and product decision made by the project owner — including catching several of the real bugs listed above through actual hands-on testing, not just code review. Documented here because it's an accurate description of how this was built, not a disclaimer.
+
+## License
+
+MIT — feel free to adjust if you'd prefer otherwise before publishing.
